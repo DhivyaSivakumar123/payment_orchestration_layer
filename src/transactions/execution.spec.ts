@@ -169,8 +169,8 @@ function createExecutionMocks() {
   const routingEngine = new RoutingEngineService(mockStatsRepo as any, mockRedisService as any);
   const stripeAdapter = new StripeAdapter(mockConfigService as any);
   const razorpayAdapter = new RazorpayAdapter(mockConfigService as any);
-  const payuAdapter = new PayUAdapter();
-  const upiAdapter = new UpiAdapter();
+  const payuAdapter = new PayUAdapter(mockConfigService as any);
+  const upiAdapter = new UpiAdapter(mockConfigService as any);
 
   const transactionsService = new TransactionsService(
     mockTxnRepo as any,

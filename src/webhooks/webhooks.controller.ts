@@ -81,6 +81,100 @@ export class WebhooksController {
     return { received: true, duplicate: result.duplicate };
   }
 
+  @Post('payu')
+  @HttpCode(200)
+  async payu(@Body() body: any) {
+    const salt = this.configService.get<string>('PAYU_SALT');
+    const isPlaceholder = !salt || salt.startsWith('payu_test_xxx') || salt === 'xxxxxxxxxxxx';
+
+    let verified = false;
+    if (isPlaceholder) {
+      this.logger.log('[PAYU WEBHOOK] Skipping signature check due to placeholder secret salt');
+      verified = true;
+    } else if (body && body.hash) {
+      verified = this.verifyPayUSignature(body, salt!);
+    }
+
+    if (!verified) {
+      this.logger.error('[PAYU WEBHOOK] Webhook signature verification failed');
+      return { received: false, error: 'Signature verification failed' };
+    }
+
+    const result = await this.webhooksService.ingest({
+      gateway: GatewayProvider.PAYU,
+      eventId: body?.mihpayid ?? body?.txnid ?? 'unknown',
+      eventType: body?.status ?? 'unknown',
+      payload: body,
+      signatureVerified: verified,
+    });
+
+    return { received: true, duplicate: result.duplicate };
+  }
+
+  @Post('upi')
+  @HttpCode(200)
+  async upi(
+    @Body() body: any,
+    @Req() req: any,
+    @Headers('x-razorpay-signature') signature?: string,
+  ) {
+    const secret = this.configService.get<string>('RAZORPAY_KEY_SECRET');
+    const isPlaceholder = !secret || secret.startsWith('rzp_test_xxx') || secret === 'xxxxxxxxxxxx';
+
+    let verified = false;
+    if (isPlaceholder) {
+      this.logger.log('[UPI WEBHOOK] Skipping signature check due to placeholder secret key');
+      verified = true;
+    } else if (signature && req.rawBody) {
+      verified = this.verifyRazorpaySignature(req.rawBody.toString('utf8'), signature, secret!);
+    }
+
+    if (!verified) {
+      this.logger.error('[UPI WEBHOOK] Webhook signature verification failed');
+      return { received: false, error: 'Signature verification failed' };
+    }
+
+    const result = await this.webhooksService.ingest({
+      gateway: GatewayProvider.UPI,
+      eventId: body?.id ?? body?.event_id ?? 'unknown',
+      eventType: body?.event ?? 'unknown',
+      payload: body,
+      signatureVerified: verified,
+    });
+
+    return { received: true, duplicate: result.duplicate };
+  }
+
+  private verifyPayUSignature(body: any, salt: string): boolean {
+    try {
+      const key = body.key || '';
+      const txnid = body.txnid || '';
+      const amount = body.amount || '';
+      const productinfo = body.productinfo || '';
+      const firstname = body.firstname || '';
+      const email = body.email || '';
+      const status = body.status || '';
+      const udf1 = body.udf1 || '';
+      const udf2 = body.udf2 || '';
+      const udf3 = body.udf3 || '';
+      const udf4 = body.udf4 || '';
+      const udf5 = body.udf5 || '';
+      const additionalCharges = body.additionalCharges || '';
+      const receivedHash = body.hash || '';
+
+      // Formula: salt|status|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
+      let hashString = `${salt}|${status}|${udf5}|${udf4}|${udf3}|${udf2}|${udf1}|${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
+      if (additionalCharges) {
+        hashString = `${additionalCharges}|${hashString}`;
+      }
+
+      const calculatedHash = crypto.createHash('sha512').update(hashString).digest('hex');
+      return calculatedHash.toLowerCase() === receivedHash.toLowerCase();
+    } catch {
+      return false;
+    }
+  }
+
   private verifyStripeSignature(rawBody: string, signature: string, secret: string): boolean {
     try {
       const parts = signature.split(',');
