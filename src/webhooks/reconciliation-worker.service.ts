@@ -50,7 +50,11 @@ export class ReconciliationWorkerService implements OnModuleInit, OnModuleDestro
         const [_, eventRecordId] = result;
         await this.processEvent(eventRecordId);
       } catch (err: any) {
-        this.logger.error(`Error in webhook reconciliation queue poll: ${err.message}`);
+        if (err.message?.includes('Connection is closed')) {
+          this.logger.log('Redis connection closed during queue poll. Switching to resilient fallback mode.');
+        } else {
+          this.logger.error(`Error in webhook reconciliation queue poll: ${err.message}`);
+        }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }

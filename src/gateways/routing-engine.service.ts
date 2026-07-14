@@ -57,6 +57,7 @@ export class RoutingEngineService {
           if (!isTripped) {
             this.logger.log(`Circuit cooldown expired for ${stats.gateway}. Transitioning to HALF_OPEN.`);
             stats.circuitState = CircuitState.HALF_OPEN;
+            stats.consecutiveFailures = 0;
             circuitState = CircuitState.HALF_OPEN;
             await this.statsRepo.save(stats);
           }
